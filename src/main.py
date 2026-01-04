@@ -20,6 +20,7 @@ from rich.tree import Tree
 from src.ast_engine.analyzers.api_detector import APIDetector
 from src.ast_engine.analyzers.migration_plan_generator import MigrationPlanGenerator
 from src.ast_engine.parsers.python_parser import PythonParser
+from src.migration_engine.transformers.python_transformer import PythonTransformer
 from src.utils.config import ensure_output_dirs, get_rules_file, settings
 from src.utils.file_handler import FileHandler
 from src.utils.logger import get_logger
@@ -178,6 +179,136 @@ def info(
         for func in analysis.functions[:10]:  # Show first 10
             params = ", ".join(func.parameters)
             console.print(f"  • {func.name}({params})")
+
+    console.print()
+
+
+@app.command()
+def migrate(
+    source: str = typer.Argument(..., help="Path to source file to migrate"),
+    output: Optional[str] = typer.Option(
+        None, "--output", "-o", help="Output path for migrated code"
+    ),
+    target: str = typer.Option("pytorch", "--target", "-t", help="Target framework"),
+    framework: str = typer.Option(
+        "tensorflow==1.15.0", "--framework", "-f", help="Source framework version"
+    ),
+    no_llm: bool = typer.Option(
+        False, "--no-llm", help="Disable LLM-based transformations"
+    ),
+    plan: Optional[str] = typer.Option(
+        None, "--plan", "-p", help="Use existing migration plan JSON file"
+    ),
+) -> None:
+    """
+    Migrate legacy code to modern framework
+
+    Examples:
+        code-morph migrate legacy_model.py --target pytorch
+        code-morph migrate legacy_model.py --output migrated.py --target pytorch
+        code-morph migrate legacy_model.py --plan migration_plan.json
+    """
+    console.print("\n[bold cyan]🔄 Code-Morph Migration Engine[/bold cyan]\n")
+
+    source_path = Path(source)
+    if not source_path.exists():
+        console.print(f"[red]❌ Error: Source file not found: {source}[/red]")
+        raise typer.Exit(1)
+
+    # Ensure output directories exist
+    ensure_output_dirs()
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console,
+    ) as progress:
+        # Step 1: Load or generate migration plan
+        if plan:
+            task1 = progress.add_task(f"[cyan]Loading migration plan from {plan}...", total=None)
+            try:
+                generator = MigrationPlanGenerator()
+                migration_plan = generator.load_plan(plan)
+                progress.update(task1, completed=True)
+                console.print(f"✅ [green]Migration plan loaded[/green]")
+            except Exception as e:
+                progress.stop()
+                console.print(f"[red]❌ Error loading plan: {e}[/red]")
+                raise typer.Exit(1)
+        else:
+            task1 = progress.add_task("[cyan]Generating migration plan...", total=None)
+            try:
+                rules_file = get_rules_file("python")
+                generator = MigrationPlanGenerator(rules_file)
+                migration_plan = generator.generate_plan(str(source_path), target, framework)
+                progress.update(task1, completed=True)
+                console.print("✅ [green]Migration plan generated[/green]")
+            except Exception as e:
+                progress.stop()
+                console.print(f"[red]❌ Error generating plan: {e}[/red]")
+                raise typer.Exit(1)
+
+        # Display plan summary
+        console.print(f"\n📋 Migration Plan: {len(migration_plan.transformations)} transformations")
+        console.print(f"   Complexity: [yellow]{migration_plan.estimated_complexity.value.upper()}[/yellow]")
+        console.print(f"   Estimated Time: [cyan]{migration_plan.estimated_time_minutes} minutes[/cyan]")
+
+        if migration_plan.warnings:
+            console.print("\n[yellow]⚠️  Warnings:[/yellow]")
+            for warning in migration_plan.warnings:
+                console.print(f"   • {warning}")
+
+        # Step 2: Execute migration
+        task2 = progress.add_task("[cyan]Transforming code...", total=None)
+        try:
+            transformer = PythonTransformer(
+                source_framework=framework.split("==")[0],
+                target_framework=target,
+                use_llm=not no_llm,
+            )
+
+            # Determine output path
+            if output is None:
+                output = str(settings.outputs_dir / "migrated_code" / source_path.name)
+
+            # Perform transformation
+            output_path = transformer.transform_file(
+                str(source_path), migration_plan, output
+            )
+
+            progress.update(task2, completed=True)
+            console.print(f"✅ [green]Code transformation complete[/green]")
+
+        except Exception as e:
+            progress.stop()
+            console.print(f"[red]❌ Error during migration: {e}[/red]")
+            logger.error(f"Migration failed: {e}", exc_info=True)
+            raise typer.Exit(1)
+
+    # Display results
+    console.print(f"\n[bold green]✨ Migration Complete![/bold green]")
+    console.print(f"\n📁 Migrated code saved to: [cyan]{output_path}[/cyan]")
+
+    # Show preview of migrated code
+    try:
+        migrated_code = Path(output_path).read_text(encoding="utf-8")
+        lines = migrated_code.split("\n")
+        preview_lines = min(20, len(lines))
+
+        console.print(f"\n[bold]Preview (first {preview_lines} lines):[/bold]")
+        syntax = Syntax(
+            "\n".join(lines[:preview_lines]),
+            "python",
+            theme="monokai",
+            line_numbers=True,
+        )
+        console.print(syntax)
+
+        if len(lines) > preview_lines:
+            console.print(f"\n... and {len(lines) - preview_lines} more lines")
+
+    except Exception as e:
+        logger.error(f"Error displaying preview: {e}")
 
     console.print()
 
