@@ -444,19 +444,19 @@ stateDiagram-v2
 graph TD
     START([Repository Path]) --> ORCH{Orchestrator<br/>Initialize}
     
-    ORCH --> |Step 1| SCAN[Repository Scanner<br/>Pattern Matching]
-    SCAN --> |FileInfo[]| CHECK1{Files Found?}
+    ORCH --> SCAN[Repository Scanner<br/>Pattern Matching]
+    SCAN --> CHECK1{Files Found?}
     CHECK1 -->|No| END1([Exit: No Files])
     CHECK1 -->|Yes| DEP[Dependency Resolver<br/>Build Graph]
     
-    DEP --> |DependencyGraph| TOPO[Topological Sort<br/>Order Files]
+    DEP --> TOPO[Topological Sort<br/>Order Files]
     TOPO --> CHECK2{Circular Deps?}
     CHECK2 -->|Yes| WARN[Log Warning<br/>Continue]
-    CHECK2 -->|No| BATCH
-    WARN --> BATCH[Create Batches<br/>Group Files]
+    CHECK2 -->|No| BATCH[Create Batches<br/>Group Files]
+    WARN --> BATCH
     
-    BATCH --> |Batch[]| LOOP{For Each Batch}
-    LOOP --> |Process| MIG[Migration Coordinator<br/>Async Parallel]
+    BATCH --> LOOP{For Each Batch}
+    LOOP --> MIG[Migration Coordinator<br/>Async Parallel]
     
     MIG --> PLAN[Generate Plan<br/>LLM + Rules]
     PLAN --> TRANS[Transform Code<br/>AST + LLM]
@@ -467,9 +467,9 @@ graph TD
     CHECK3 -->|No| VERIFY{Verify Enabled?}
     
     VERIFY -->|Yes| VER[Verification Agent<br/>Test Generation]
-    VERIFY -->|No| REP
+    VERIFY -->|No| REP[Report Generator<br/>Metrics & Tables]
     VER --> EXEC[Execute Tests<br/>Compare Outputs]
-    EXEC --> REP[Report Generator<br/>Metrics & Tables]
+    EXEC --> REP
     
     REP --> END2([Display Report<br/>Exit])
     
