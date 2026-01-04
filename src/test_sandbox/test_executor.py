@@ -15,6 +15,7 @@ from src.test_sandbox.schemas.test_models import (
     DockerConfig,
     SandboxEnvironment,
     TestResult,
+    TestStatus,
     TestSuiteResult,
 )
 from src.utils.logger import get_logger
@@ -71,11 +72,14 @@ class TestExecutor:
 
             # Create suite result
             suite_result = TestSuiteResult(
-                test_file=test_file,
+                file_path=test_file,
+                framework="python",
                 total_tests=len(test_results),
-                passed=sum(1 for t in test_results if t.passed),
-                failed=sum(1 for t in test_results if not t.passed),
-                test_results=test_results,
+                passed=sum(1 for t in test_results if t.status == TestStatus.PASSED),
+                failed=sum(1 for t in test_results if t.status == TestStatus.FAILED),
+                errors=sum(1 for t in test_results if t.status == TestStatus.ERROR),
+                duration_ms=sum(t.duration_ms for t in test_results),
+                tests=test_results,
             )
 
             logger.info(
@@ -86,16 +90,19 @@ class TestExecutor:
         except Exception as e:
             logger.error(f"Test execution failed: {e}")
             return TestSuiteResult(
-                test_file=test_file,
+                file_path=test_file,
+                framework="python",
                 total_tests=0,
                 passed=0,
-                failed=1,
-                test_results=[
+                failed=0,
+                errors=1,
+                duration_ms=0.0,
+                tests=[
                     TestResult(
                         test_name="execution_error",
-                        passed=False,
-                        error_message=str(e),
-                        execution_time=0.0,
+                        status=TestStatus.ERROR,
+                        duration_ms=0.0,
+                        error=str(e),
                     )
                 ],
             )
@@ -117,7 +124,8 @@ class TestExecutor:
             Created sandbox environment
         """
         if config is None:
-            config = DockerConfig(image="python:3.10-slim")
+            # Allow network for pip install
+            config = DockerConfig(image="python:3.10-slim", network_disabled=False)
 
         sandbox = self.docker.create_sandbox(
             config=config,
@@ -228,11 +236,18 @@ class TestExecutor:
         results = []
 
         for test in report.get("tests", []):
+            outcome = test.get("outcome", "unknown")
+            status_map = {
+                "passed": TestStatus.PASSED,
+                "failed": TestStatus.FAILED,
+                "error": TestStatus.ERROR,
+                "skipped": TestStatus.SKIPPED,
+            }
             result = TestResult(
                 test_name=test.get("nodeid", "unknown"),
-                passed=test.get("outcome") == "passed",
-                error_message=test.get("call", {}).get("longrepr") if test.get("outcome") != "passed" else None,
-                execution_time=test.get("call", {}).get("duration", 0.0),
+                status=status_map.get(outcome, TestStatus.ERROR),
+                duration_ms=test.get("call", {}).get("duration", 0.0) * 1000,
+                error=test.get("call", {}).get("longrepr") if outcome != "passed" else None,
                 output=test.get("call", {}).get("stdout", ""),
             )
             results.append(result)
@@ -261,8 +276,8 @@ class TestExecutor:
 
                     result = TestResult(
                         test_name=test_name,
-                        passed=passed,
-                        execution_time=0.0,
+                        status=TestStatus.PASSED if passed else TestStatus.FAILED,
+                        duration_ms=0.0,
                     )
                     results.append(result)
 

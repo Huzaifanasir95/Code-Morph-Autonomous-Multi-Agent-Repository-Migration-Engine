@@ -17,12 +17,14 @@ from rich.syntax import Syntax
 from rich.table import Table
 from rich.tree import Tree
 
+from src.agent_orchestration.orchestrator import RepositoryOrchestrator
 from src.ast_engine.analyzers.api_detector import APIDetector
 from src.ast_engine.analyzers.migration_plan_generator import MigrationPlanGenerator
 from src.ast_engine.parsers.python_parser import PythonParser
 from src.migration_engine.transformers.python_transformer import PythonTransformer
 from src.test_sandbox.comparator import OutputComparator
 from src.test_sandbox.docker_manager import DockerManager
+from src.test_sandbox.schemas.test_models import TestResult, TestStatus, TestSuiteResult
 from src.test_sandbox.test_executor import TestExecutor
 from src.test_sandbox.test_generator import TestGenerator
 from src.utils.config import ensure_output_dirs, get_rules_file, settings
@@ -382,6 +384,80 @@ def _display_migration_plan(plan) -> None:
 
 
 @app.command()
+def repo_migrate(
+    repository: str = typer.Argument(..., help="Path to repository to migrate"),
+    source_framework: str = typer.Option(..., "--source", "-s", help="Source framework (e.g., tensorflow)"),
+    target_framework: str = typer.Option(..., "--target", "-t", help="Target framework (e.g., pytorch)"),
+    output: str = typer.Option("migrated", "--output", "-o", help="Output directory for migrated code"),
+    include: Optional[str] = typer.Option(None, "--include", help="Include patterns (comma-separated, e.g., *.py,src/*)"),
+    exclude: Optional[str] = typer.Option(None, "--exclude", help="Exclude patterns (comma-separated, e.g., tests/*,*_test.py)"),
+    verify: bool = typer.Option(True, "--verify/--no-verify", help="Enable automated verification"),
+    max_parallel: int = typer.Option(3, "--max-parallel", "-p", help="Maximum parallel migrations"),
+    report_json: Optional[str] = typer.Option(None, "--report", "-r", help="Save JSON report to file"),
+) -> None:
+    """
+    Migrate an entire repository autonomously with multi-agent orchestration.
+    
+    This command orchestrates a full repository migration by:
+    1. Scanning the repository for files needing migration
+    2. Resolving dependencies and determining migration order
+    3. Creating batches for parallel execution
+    4. Migrating files with rate limiting and error handling
+    5. Verifying migrated code (if enabled)
+    """
+    console.print("\n[bold cyan]Code-Morph Repository Migration[/bold cyan]")
+    console.print(f"Source: {repository}")
+    console.print(f"Migration: {source_framework} -> {target_framework}")
+    console.print(f"Output: {output}")
+    console.print()
+    
+    # Parse include/exclude patterns
+    include_patterns = [p.strip() for p in include.split(",")] if include else None
+    exclude_patterns = [p.strip() for p in exclude.split(",")] if exclude else None
+    
+    # Initialize orchestrator
+    orchestrator = RepositoryOrchestrator(
+        output_dir=output,
+        include_patterns=include_patterns,
+        exclude_patterns=exclude_patterns,
+        use_docker=False,  # Use local testing (all libraries installed)
+        max_parallel=max_parallel,
+    )
+    
+    try:
+        # Run autonomous migration
+        with console.status("[bold green]Migrating repository...", spinner="dots"):
+            report = orchestrator.migrate_repository(
+                repo_path=repository,
+                source_framework=source_framework,
+                target_framework=target_framework,
+                verify=verify,
+            )
+        
+        # Display report
+        console.print()
+        orchestrator.report_generator.print_report(report)
+        
+        # Save JSON report if requested
+        if report_json:
+            orchestrator.report_generator.save_report(report, report_json)
+            console.print(f"\n[green]Report saved to: {report_json}")
+        
+        # Exit with appropriate code
+        if report.failed > 0:
+            console.print("\n[yellow]Migration completed with errors")
+            raise typer.Exit(code=1)
+        else:
+            console.print("\n[green]Migration completed successfully!")
+            raise typer.Exit(code=0)
+            
+    except Exception as e:
+        console.print(f"\n[red]Error: {e}")
+        logger.exception("Repository migration failed")
+        raise typer.Exit(code=1)
+
+
+@app.command()
 def verify(
     legacy_file: str = typer.Argument(..., help="Path to legacy code file"),
     migrated_file: str = typer.Argument(..., help="Path to migrated code file"),
@@ -403,7 +479,7 @@ def verify(
     """
     console.print(
         Panel.fit(
-            "🔬 [bold cyan]Code-Morph Verification Engine[/bold cyan]\n"
+            "[bold cyan]Code-Morph Verification Engine[/bold cyan]\n"
             "Proving zero logical drift...",
             border_style="cyan",
         )
@@ -413,11 +489,11 @@ def verify(
     migrated_path = Path(migrated_file)
 
     if not legacy_path.exists():
-        console.print(f"[red]❌ Legacy file not found: {legacy_file}[/red]")
+        console.print(f"[red]ERROR: Legacy file not found: {legacy_file}[/red]")
         raise typer.Exit(1)
 
     if not migrated_path.exists():
-        console.print(f"[red]❌ Migrated file not found: {migrated_file}[/red]")
+        console.print(f"[red]ERROR: Migrated file not found: {migrated_file}[/red]")
         raise typer.Exit(1)
 
     # Parse requirements
@@ -435,10 +511,23 @@ def verify(
             progress.add_task("Generating tests with LLM...", total=None)
             test_generator = TestGenerator()
 
-            legacy_tests = test_generator.generate_tests(
-                code_file=str(legacy_path), output_dir="outputs/verification/tests"
+            # Read legacy code
+            legacy_code = legacy_path.read_text(encoding="utf-8")
+            
+            # Generate tests
+            test_code = test_generator.generate_tests(
+                code=legacy_code,
+                file_path=str(legacy_path),
+                framework="python",
             )
-            console.print(f"[green]✓[/green] Generated tests: {legacy_tests}")
+            
+            # Save tests
+            test_output_dir = Path("outputs/verification/tests")
+            test_output_dir.mkdir(parents=True, exist_ok=True)
+            legacy_tests = test_output_dir / f"test_{legacy_path.stem}.py"
+            test_generator.save_tests(test_code, str(legacy_tests))
+            
+            console.print(f"[green]Generated tests: {legacy_tests}[/green]")
 
             # Step 2: Check Docker availability
             if not no_docker:
@@ -446,14 +535,14 @@ def verify(
                 docker_mgr = DockerManager()
                 if not docker_mgr.is_docker_available():
                     console.print(
-                        "[yellow]⚠️  Docker not available, falling back to local execution[/yellow]"
+                        "[yellow]WARNING: Docker not available, falling back to local execution[/yellow]"
                     )
                     no_docker = True
 
             # Step 3: Execute tests
             if no_docker:
                 console.print(
-                    "[yellow]⚠️  Running tests locally (no sandboxing)[/yellow]"
+                    "[yellow]WARNING: Running tests locally (no sandboxing)[/yellow]"
                 )
                 # Local execution (simplified)
                 legacy_results = _run_tests_locally(legacy_path, legacy_tests, req_list)
@@ -465,13 +554,13 @@ def verify(
                 test_executor = TestExecutor()
 
                 legacy_results = test_executor.execute_tests(
-                    test_file=legacy_tests,
+                    test_file=str(legacy_tests),
                     code_file=str(legacy_path),
                     requirements=req_list,
                 )
 
                 migrated_results = test_executor.execute_tests(
-                    test_file=legacy_tests,
+                    test_file=str(legacy_tests),
                     code_file=str(migrated_path),
                     requirements=req_list,
                 )
@@ -484,7 +573,7 @@ def verify(
             )
 
         # Display results
-        console.print("\n[bold]📊 Verification Results:[/bold]\n")
+        console.print("\n[bold]Verification Results:[/bold]\n")
 
         # Create results table
         results_table = Table(show_header=True, header_style="bold magenta")
@@ -499,23 +588,23 @@ def verify(
         )
         results_table.add_row(
             "Execution Time",
-            f"{legacy_results.execution_time:.2f}s",
-            f"{migrated_results.execution_time:.2f}s",
+            f"{legacy_results.duration_ms/1000:.2f}s",
+            f"{migrated_results.duration_ms/1000:.2f}s",
         )
 
         console.print(results_table)
 
         # Comparison results
-        console.print(f"\n[bold]🔍 Behavioral Equivalence:[/bold]")
+        console.print(f"\n[bold]Behavioral Equivalence:[/bold]")
         console.print(f"  Similarity Score: {comparison.similarity_score:.1%}")
 
         if comparison.are_equivalent:
             console.print(
-                "\n[bold green]✅ VERIFIED: Zero logical drift confirmed![/bold green]"
+                "\n[bold green]VERIFIED: Zero logical drift confirmed![/bold green]"
             )
         else:
             console.print(
-                f"\n[bold red]❌ DIFFERENCES DETECTED ({len(comparison.differences or [])} issues)[/bold red]"
+                f"\n[bold red]DIFFERENCES DETECTED ({len(comparison.differences or [])} issues)[/bold red]"
             )
             if comparison.differences:
                 for diff in comparison.differences[:10]:
@@ -528,13 +617,13 @@ def verify(
                     "file": str(legacy_path),
                     "passed": legacy_results.passed,
                     "total": legacy_results.total_tests,
-                    "execution_time": legacy_results.execution_time,
+                    "execution_time": legacy_results.duration_ms / 1000,
                 },
                 "migrated_results": {
                     "file": str(migrated_path),
                     "passed": migrated_results.passed,
                     "total": migrated_results.total_tests,
-                    "execution_time": migrated_results.execution_time,
+                    "execution_time": migrated_results.duration_ms / 1000,
                 },
                 "comparison": {
                     "are_equivalent": comparison.are_equivalent,
@@ -546,10 +635,10 @@ def verify(
             output_path = Path(output)
             output_path.parent.mkdir(parents=True, exist_ok=True)
             output_path.write_text(json.dumps(report_data, indent=2))
-            console.print(f"\n[green]✓[/green] Report saved to: {output}")
+            console.print(f"\n[green]Report saved to: {output}[/green]")
 
     except Exception as e:
-        console.print(f"\n[red]❌ Verification failed: {e}[/red]")
+        console.print(f"\n[red]ERROR: Verification failed: {e}[/red]")
         logger.exception("Verification error")
         raise typer.Exit(1)
 
@@ -567,32 +656,54 @@ def _run_tests_locally(code_file: Path, test_file: str, requirements: list) -> "
         TestSuiteResult
     """
     import subprocess
+    import shutil
+    import os
     from src.test_sandbox.schemas.test_models import TestResult, TestSuiteResult
 
     try:
-        # Run pytest
+        # Copy code file to test directory so imports work
+        test_dir = Path(test_file).parent
+        code_filename = code_file.name
+        target_code_path = test_dir / code_filename
+        shutil.copy2(code_file, target_code_path)
+        
+        # Set PYTHONPATH to include test directory
+        env = os.environ.copy()
+        env["PYTHONPATH"] = str(test_dir) + os.pathsep + env.get("PYTHONPATH", "")
+        
+        # Run pytest (override config to avoid pytest-cov dependency)
         result = subprocess.run(
-            ["pytest", test_file, "-v", "--tb=short"],
+            ["pytest", test_file, "-v", "--tb=short", "--override-ini=addopts="],
             capture_output=True,
             text=True,
             timeout=300,
+            env=env,
+            cwd=str(test_dir),
         )
 
         # Parse output (simplified)
         passed = result.returncode == 0
         total = 1  # Simplified
+        
+        # Log errors for debugging
+        if not passed:
+            logger.error(f"Test execution failed for {code_file.name}")
+            logger.error(f"STDOUT: {result.stdout[:500]}")
+            logger.error(f"STDERR: {result.stderr[:500]}")
 
         return TestSuiteResult(
-            test_file=test_file,
+            file_path=str(test_file),
+            framework="python",
             total_tests=total,
             passed=total if passed else 0,
             failed=0 if passed else total,
-            test_results=[
+            duration_ms=0.0,
+            tests=[
                 TestResult(
                     test_name="local_test",
-                    passed=passed,
-                    error_message=result.stderr if not passed else None,
-                    execution_time=0.0,
+                    status=TestStatus.PASSED if passed else TestStatus.FAILED,
+                    duration_ms=0.0,
+                    error=result.stderr if not passed else None,
                     output=result.stdout,
                 )
             ],
@@ -600,16 +711,18 @@ def _run_tests_locally(code_file: Path, test_file: str, requirements: list) -> "
 
     except Exception as e:
         return TestSuiteResult(
-            test_file=test_file,
+            file_path=str(test_file),
+            framework="python",
             total_tests=1,
             passed=0,
             failed=1,
-            test_results=[
+            duration_ms=0.0,
+            tests=[
                 TestResult(
                     test_name="local_test",
-                    passed=False,
-                    error_message=str(e),
-                    execution_time=0.0,
+                    status=TestStatus.ERROR,
+                    duration_ms=0.0,
+                    error=str(e),
                 )
             ],
         )

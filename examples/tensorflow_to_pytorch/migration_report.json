@@ -1,0 +1,15 @@
+{
+  "repository": "examples/tensorflow_to_pytorch",
+  "target_framework": "pytorch",
+  "total_files": 0,
+  "successful": 0,
+  "failed": 0,
+  "verified": 0,
+  "verification_failed": 0,
+  "success_rate": 0.0,
+  "verification_rate": 0.0,
+  "total_duration_seconds": 0.0,
+  "files": [],
+  "errors": [],
+  "timestamp": "2026-01-04T15:22:15.436378"
+}

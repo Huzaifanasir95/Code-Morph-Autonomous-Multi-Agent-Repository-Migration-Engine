@@ -25,7 +25,11 @@ class DockerManager:
     def __init__(self):
         """Initialize Docker client"""
         try:
+            # Initialize Docker client without credential store to avoid Windows issues
             self.client = docker.from_env()
+            # Disable credential store warnings
+            import warnings
+            warnings.filterwarnings("ignore", message="docker-credential-desktop")
             logger.info("Docker client initialized")
         except DockerException as e:
             logger.error(f"Failed to initialize Docker client: {e}")
@@ -62,12 +66,17 @@ class DockerManager:
         logger.info(f"Creating sandbox with image: {config.image}")
 
         try:
-            # Pull image if not available
+            # Pull image if not available (try to get it first, skip pull if credential issues)
             try:
                 self.client.images.get(config.image)
+                logger.info(f"Image {config.image} already available locally")
             except NotFound:
                 logger.info(f"Pulling image: {config.image}")
-                self.client.images.pull(config.image)
+                try:
+                    self.client.images.pull(config.image)
+                except Exception as pull_error:
+                    logger.warning(f"Failed to pull image (trying anyway): {pull_error}")
+                    # Try to use local image anyway - it might exist but API failed
 
             # Create container
             container = self.client.containers.create(
@@ -197,8 +206,9 @@ class DockerManager:
 
             tar_stream.seek(0)
 
-            # Copy to container
-            container.put_archive(Path(dest_path).parent, tar_stream)
+            # Copy to container (use forward slashes for container paths)
+            dest_dir = dest_path.rsplit('/', 1)[0] if '/' in dest_path else '/'
+            container.put_archive(dest_dir, tar_stream)
             logger.info(f"Copied {source_path} to sandbox:{dest_path}")
 
         except DockerException as e:

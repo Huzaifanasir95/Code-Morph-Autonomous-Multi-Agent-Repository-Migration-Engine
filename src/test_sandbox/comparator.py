@@ -6,6 +6,7 @@ Uses deepdiff for deep comparison with numerical tolerance.
 """
 
 import json
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -13,12 +14,22 @@ import numpy as np
 from deepdiff import DeepDiff
 
 from src.test_sandbox.schemas.test_models import (
-    OutputComparison,
+    TestStatus,
     TestSuiteResult,
 )
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+@dataclass
+class SimpleComparison:
+    """Simple comparison result for CLI"""
+    are_equivalent: bool
+    similarity_score: float
+    differences: Optional[List[str]] = None
+    legacy_output: str = ""
+    migrated_output: str = ""
 
 
 class OutputComparator:
@@ -43,7 +54,7 @@ class OutputComparator:
         self,
         legacy_results: TestSuiteResult,
         migrated_results: TestSuiteResult,
-    ) -> OutputComparison:
+    ) -> SimpleComparison:
         """
         Compare test suite results
 
@@ -52,7 +63,7 @@ class OutputComparator:
             migrated_results: Results from migrated code
 
         Returns:
-            OutputComparison with detailed analysis
+            SimpleComparison with detailed analysis
         """
         logger.info("Comparing test results")
 
@@ -61,7 +72,7 @@ class OutputComparator:
         migrated_passed = migrated_results.passed == migrated_results.total_tests
 
         if not legacy_passed:
-            return OutputComparison(
+            return SimpleComparison(
                 are_equivalent=False,
                 differences=["Legacy code tests failed"],
                 similarity_score=0.0,
@@ -70,7 +81,7 @@ class OutputComparator:
             )
 
         if not migrated_passed:
-            return OutputComparison(
+            return SimpleComparison(
                 are_equivalent=False,
                 differences=["Migrated code tests failed"],
                 similarity_score=0.0,
@@ -83,12 +94,12 @@ class OutputComparator:
         total_comparisons = 0
         matching_comparisons = 0
 
-        for legacy_test in legacy_results.test_results:
+        for legacy_test in legacy_results.tests:
             # Find corresponding migrated test
             migrated_test = next(
                 (
                     t
-                    for t in migrated_results.test_results
+                    for t in migrated_results.tests
                     if t.test_name == legacy_test.test_name
                 ),
                 None,
@@ -117,12 +128,12 @@ class OutputComparator:
 
         # Calculate similarity score
         similarity_score = (
-            matching_comparisons / total_comparisons if total_comparisons > 0 else 0.0
+            matching_comparisons / total_comparisons if total_comparisons > 0 else 1.0
         )
 
         are_equivalent = len(differences) == 0
 
-        return OutputComparison(
+        return SimpleComparison(
             are_equivalent=are_equivalent,
             differences=differences if differences else None,
             similarity_score=similarity_score,
@@ -134,7 +145,7 @@ class OutputComparator:
         self,
         legacy_output: Any,
         migrated_output: Any,
-    ) -> OutputComparison:
+    ) -> SimpleComparison:
         """
         Compare raw outputs
 
@@ -143,7 +154,7 @@ class OutputComparator:
             migrated_output: Output from migrated code
 
         Returns:
-            OutputComparison with detailed analysis
+            SimpleComparison with detailed analysis
         """
         logger.info("Comparing raw outputs")
 
@@ -163,7 +174,7 @@ class OutputComparator:
             )
             similarity_score = max(0.0, 1.0 - (len(differences_list) / max_diffs))
 
-        return OutputComparison(
+        return SimpleComparison(
             are_equivalent=are_equivalent,
             differences=differences_list if differences_list else None,
             similarity_score=similarity_score,
