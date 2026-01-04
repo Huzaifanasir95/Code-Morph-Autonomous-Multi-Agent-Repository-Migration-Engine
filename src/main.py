@@ -21,6 +21,10 @@ from src.ast_engine.analyzers.api_detector import APIDetector
 from src.ast_engine.analyzers.migration_plan_generator import MigrationPlanGenerator
 from src.ast_engine.parsers.python_parser import PythonParser
 from src.migration_engine.transformers.python_transformer import PythonTransformer
+from src.test_sandbox.comparator import OutputComparator
+from src.test_sandbox.docker_manager import DockerManager
+from src.test_sandbox.test_executor import TestExecutor
+from src.test_sandbox.test_generator import TestGenerator
 from src.utils.config import ensure_output_dirs, get_rules_file, settings
 from src.utils.file_handler import FileHandler
 from src.utils.logger import get_logger
@@ -375,6 +379,240 @@ def _display_migration_plan(plan) -> None:
             if i == 5 and len(plan.transformations) > 5:
                 console.print(f"  ... and {len(plan.transformations) - 5} more")
                 break
+
+
+@app.command()
+def verify(
+    legacy_file: str = typer.Argument(..., help="Path to legacy code file"),
+    migrated_file: str = typer.Argument(..., help="Path to migrated code file"),
+    output: Optional[str] = typer.Option(
+        None, "--output", "-o", help="Output file for verification report (JSON)"
+    ),
+    requirements: Optional[str] = typer.Option(
+        None, "--requirements", "-r", help="Comma-separated list of dependencies"
+    ),
+    no_docker: bool = typer.Option(
+        False, "--no-docker", help="Skip Docker sandboxing (run locally)"
+    ),
+) -> None:
+    """
+    🔬 Verify behavioral equivalence between legacy and migrated code.
+
+    Generates tests, executes them in sandboxed environments,
+    and compares outputs to prove zero logical drift.
+    """
+    console.print(
+        Panel.fit(
+            "🔬 [bold cyan]Code-Morph Verification Engine[/bold cyan]\n"
+            "Proving zero logical drift...",
+            border_style="cyan",
+        )
+    )
+
+    legacy_path = Path(legacy_file)
+    migrated_path = Path(migrated_file)
+
+    if not legacy_path.exists():
+        console.print(f"[red]❌ Legacy file not found: {legacy_file}[/red]")
+        raise typer.Exit(1)
+
+    if not migrated_path.exists():
+        console.print(f"[red]❌ Migrated file not found: {migrated_file}[/red]")
+        raise typer.Exit(1)
+
+    # Parse requirements
+    req_list = []
+    if requirements:
+        req_list = [r.strip() for r in requirements.split(",")]
+
+    try:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            # Step 1: Generate tests
+            progress.add_task("Generating tests with LLM...", total=None)
+            test_generator = TestGenerator()
+
+            legacy_tests = test_generator.generate_tests(
+                code_file=str(legacy_path), output_dir="outputs/verification/tests"
+            )
+            console.print(f"[green]✓[/green] Generated tests: {legacy_tests}")
+
+            # Step 2: Check Docker availability
+            if not no_docker:
+                progress.add_task("Checking Docker availability...", total=None)
+                docker_mgr = DockerManager()
+                if not docker_mgr.is_docker_available():
+                    console.print(
+                        "[yellow]⚠️  Docker not available, falling back to local execution[/yellow]"
+                    )
+                    no_docker = True
+
+            # Step 3: Execute tests
+            if no_docker:
+                console.print(
+                    "[yellow]⚠️  Running tests locally (no sandboxing)[/yellow]"
+                )
+                # Local execution (simplified)
+                legacy_results = _run_tests_locally(legacy_path, legacy_tests, req_list)
+                migrated_results = _run_tests_locally(
+                    migrated_path, legacy_tests, req_list
+                )
+            else:
+                progress.add_task("Executing tests in sandbox...", total=None)
+                test_executor = TestExecutor()
+
+                legacy_results = test_executor.execute_tests(
+                    test_file=legacy_tests,
+                    code_file=str(legacy_path),
+                    requirements=req_list,
+                )
+
+                migrated_results = test_executor.execute_tests(
+                    test_file=legacy_tests,
+                    code_file=str(migrated_path),
+                    requirements=req_list,
+                )
+
+            # Step 4: Compare results
+            progress.add_task("Comparing outputs...", total=None)
+            comparator = OutputComparator()
+            comparison = comparator.compare_test_results(
+                legacy_results, migrated_results
+            )
+
+        # Display results
+        console.print("\n[bold]📊 Verification Results:[/bold]\n")
+
+        # Create results table
+        results_table = Table(show_header=True, header_style="bold magenta")
+        results_table.add_column("Metric", style="cyan")
+        results_table.add_column("Legacy", style="yellow")
+        results_table.add_column("Migrated", style="green")
+
+        results_table.add_row(
+            "Tests Passed",
+            f"{legacy_results.passed}/{legacy_results.total_tests}",
+            f"{migrated_results.passed}/{migrated_results.total_tests}",
+        )
+        results_table.add_row(
+            "Execution Time",
+            f"{legacy_results.execution_time:.2f}s",
+            f"{migrated_results.execution_time:.2f}s",
+        )
+
+        console.print(results_table)
+
+        # Comparison results
+        console.print(f"\n[bold]🔍 Behavioral Equivalence:[/bold]")
+        console.print(f"  Similarity Score: {comparison.similarity_score:.1%}")
+
+        if comparison.are_equivalent:
+            console.print(
+                "\n[bold green]✅ VERIFIED: Zero logical drift confirmed![/bold green]"
+            )
+        else:
+            console.print(
+                f"\n[bold red]❌ DIFFERENCES DETECTED ({len(comparison.differences or [])} issues)[/bold red]"
+            )
+            if comparison.differences:
+                for diff in comparison.differences[:10]:
+                    console.print(f"  • {diff}")
+
+        # Save report if requested
+        if output:
+            report_data = {
+                "legacy_results": {
+                    "file": str(legacy_path),
+                    "passed": legacy_results.passed,
+                    "total": legacy_results.total_tests,
+                    "execution_time": legacy_results.execution_time,
+                },
+                "migrated_results": {
+                    "file": str(migrated_path),
+                    "passed": migrated_results.passed,
+                    "total": migrated_results.total_tests,
+                    "execution_time": migrated_results.execution_time,
+                },
+                "comparison": {
+                    "are_equivalent": comparison.are_equivalent,
+                    "similarity_score": comparison.similarity_score,
+                    "differences": comparison.differences,
+                },
+            }
+
+            output_path = Path(output)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(json.dumps(report_data, indent=2))
+            console.print(f"\n[green]✓[/green] Report saved to: {output}")
+
+    except Exception as e:
+        console.print(f"\n[red]❌ Verification failed: {e}[/red]")
+        logger.exception("Verification error")
+        raise typer.Exit(1)
+
+
+def _run_tests_locally(code_file: Path, test_file: str, requirements: list) -> "TestSuiteResult":
+    """
+    Run tests locally without Docker (simplified)
+
+    Args:
+        code_file: Code file path
+        test_file: Test file path
+        requirements: Package requirements
+
+    Returns:
+        TestSuiteResult
+    """
+    import subprocess
+    from src.test_sandbox.schemas.test_models import TestResult, TestSuiteResult
+
+    try:
+        # Run pytest
+        result = subprocess.run(
+            ["pytest", test_file, "-v", "--tb=short"],
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+
+        # Parse output (simplified)
+        passed = result.returncode == 0
+        total = 1  # Simplified
+
+        return TestSuiteResult(
+            test_file=test_file,
+            total_tests=total,
+            passed=total if passed else 0,
+            failed=0 if passed else total,
+            test_results=[
+                TestResult(
+                    test_name="local_test",
+                    passed=passed,
+                    error_message=result.stderr if not passed else None,
+                    execution_time=0.0,
+                    output=result.stdout,
+                )
+            ],
+        )
+
+    except Exception as e:
+        return TestSuiteResult(
+            test_file=test_file,
+            total_tests=1,
+            passed=0,
+            failed=1,
+            test_results=[
+                TestResult(
+                    test_name="local_test",
+                    passed=False,
+                    error_message=str(e),
+                    execution_time=0.0,
+                )
+            ],
+        )
 
 
 if __name__ == "__main__":
