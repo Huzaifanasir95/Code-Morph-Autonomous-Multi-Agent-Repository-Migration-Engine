@@ -56,6 +56,6 @@ Thumbs.db
 
 # Poetry
 poetry.lock
-/src
+
 
 .env.example
