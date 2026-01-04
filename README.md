@@ -110,39 +110,377 @@ Through automated verification:
 
 ## 🏗️ Architecture
 
-Code-Morph employs a sophisticated **4-phase autonomous pipeline**:
+Code-Morph employs a sophisticated **4-phase autonomous pipeline** with a multi-agent architecture coordinated by a central orchestrator.
+
+### 🎯 System Architecture Overview
+
+```mermaid
+graph TB
+    subgraph "User Interface Layer"
+        CLI[CLI - Typer + Rich<br/>Command Line Interface]
+    end
+    
+    subgraph "Orchestration Layer"
+        ORCH[Repository Orchestrator<br/>State Management & Coordination]
+    end
+    
+    subgraph "Agent Layer"
+        SCAN[Repository Scanner<br/>File Discovery]
+        DEP[Dependency Resolver<br/>Topological Sorting]
+        MIG[Migration Coordinator<br/>Parallel Execution]
+        VER[Verification Agent<br/>Test & Validate]
+        REP[Report Generator<br/>Results & Metrics]
+    end
+    
+    subgraph "Core Engine Layer"
+        AST[AST Engine<br/>Code Parsing]
+        TRANS[Transformer<br/>Code Modification]
+        LLM[LLM Integration<br/>Groq/Anthropic]
+        TEST[Test Sandbox<br/>Docker/Local]
+    end
+    
+    subgraph "Data Layer"
+        SCHEMAS[Pydantic Schemas<br/>Type Safety]
+        LOGS[Logging System<br/>Loguru]
+        CACHE[Cache & State<br/>In-Memory]
+    end
+    
+    CLI --> ORCH
+    
+    ORCH --> SCAN
+    ORCH --> DEP
+    ORCH --> MIG
+    ORCH --> VER
+    ORCH --> REP
+    
+    SCAN --> AST
+    DEP --> SCHEMAS
+    MIG --> TRANS
+    MIG --> LLM
+    VER --> TEST
+    VER --> LLM
+    REP --> LOGS
+    
+    AST --> SCHEMAS
+    TRANS --> AST
+    TRANS --> LLM
+    TEST --> SCHEMAS
+    
+    style CLI fill:#667BC6,stroke:#333,stroke-width:3px,color:#fff
+    style ORCH fill:#DA7297,stroke:#333,stroke-width:3px,color:#fff
+    style SCAN fill:#FADA7A,stroke:#333,stroke-width:2px,color:#333
+    style DEP fill:#FADA7A,stroke:#333,stroke-width:2px,color:#333
+    style MIG fill:#FADA7A,stroke:#333,stroke-width:2px,color:#333
+    style VER fill:#FADA7A,stroke:#333,stroke-width:2px,color:#333
+    style REP fill:#FADA7A,stroke:#333,stroke-width:2px,color:#333
+    style AST fill:#82CD47,stroke:#333,stroke-width:2px,color:#fff
+    style TRANS fill:#82CD47,stroke:#333,stroke-width:2px,color:#fff
+    style LLM fill:#82CD47,stroke:#333,stroke-width:2px,color:#fff
+    style TEST fill:#82CD47,stroke:#333,stroke-width:2px,color:#fff
+```
+
+### 📊 Data Flow Diagram (DFD) - Level 0
+
+```mermaid
+flowchart LR
+    USER((User))
+    REPO[(Legacy<br/>Repository)]
+    OUTPUT[(Migrated<br/>Repository)]
+    
+    USER -->|CLI Commands| SYSTEM[Code-Morph<br/>Migration Engine]
+    REPO -->|Source Code| SYSTEM
+    SYSTEM -->|Migrated Code| OUTPUT
+    SYSTEM -->|Reports & Logs| USER
+    
+    style USER fill:#667BC6,stroke:#333,stroke-width:2px,color:#fff
+    style SYSTEM fill:#DA7297,stroke:#333,stroke-width:3px,color:#fff
+    style REPO fill:#FADA7A,stroke:#333,stroke-width:2px,color:#333
+    style OUTPUT fill:#82CD47,stroke:#333,stroke-width:2px,color:#fff
+```
+
+### 📊 Data Flow Diagram (DFD) - Level 1
+
+```mermaid
+flowchart TB
+    USER((User))
+    REPO[(Legacy<br/>Repository)]
+    OUTPUT[(Migrated<br/>Repository)]
+    
+    subgraph "Code-Morph System"
+        direction TB
+        
+        P1[1.0<br/>Scan Repository<br/>File Discovery]
+        P2[2.0<br/>Analyze Dependencies<br/>Build Graph]
+        P3[3.0<br/>Generate Migration Plan<br/>Create Batches]
+        P4[4.0<br/>Transform Code<br/>Apply Migrations]
+        P5[5.0<br/>Verify Equivalence<br/>Run Tests]
+        P6[6.0<br/>Generate Report<br/>Output Results]
+        
+        D1[(AST Data<br/>Parsed Trees)]
+        D2[(Dependency<br/>Graph)]
+        D3[(Migration<br/>Plans)]
+        D4[(Test<br/>Results)]
+    end
+    
+    USER -->|repo-migrate command| P1
+    REPO -->|Source Files| P1
+    
+    P1 -->|File List| D1
+    P1 -->|Discovered Files| P2
+    
+    P2 -->|Dependencies| D2
+    D1 --> P2
+    P2 -->|Ordered Files| P3
+    
+    P3 -->|Batches| D3
+    D2 --> P3
+    P3 -->|Migration Plan| P4
+    
+    D3 --> P4
+    D1 --> P4
+    P4 -->|Transformed Code| OUTPUT
+    P4 -->|Migrated Files| P5
+    
+    P5 -->|Test Results| D4
+    OUTPUT --> P5
+    REPO --> P5
+    
+    D4 --> P6
+    P6 -->|Final Report| USER
+    
+    style USER fill:#667BC6,stroke:#333,stroke-width:2px,color:#fff
+    style P1 fill:#DA7297,stroke:#333,stroke-width:2px,color:#fff
+    style P2 fill:#DA7297,stroke:#333,stroke-width:2px,color:#fff
+    style P3 fill:#DA7297,stroke:#333,stroke-width:2px,color:#fff
+    style P4 fill:#DA7297,stroke:#333,stroke-width:2px,color:#fff
+    style P5 fill:#DA7297,stroke:#333,stroke-width:2px,color:#fff
+    style P6 fill:#DA7297,stroke:#333,stroke-width:2px,color:#fff
+    style REPO fill:#FADA7A,stroke:#333,stroke-width:2px,color:#333
+    style OUTPUT fill:#82CD47,stroke:#333,stroke-width:2px,color:#fff
+```
+
+### 🔄 Sequence Diagram - Migration Process
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant CLI
+    participant Orch as Orchestrator
+    participant Scan as Scanner
+    participant Dep as Dependency Resolver
+    participant Mig as Migration Coordinator
+    participant LLM as LLM Client
+    participant Ver as Verification Agent
+    participant Rep as Report Generator
+    
+    User->>CLI: repo-migrate command
+    CLI->>Orch: Initialize migration
+    
+    Note over Orch: Phase 1: Scan
+    Orch->>Scan: scan_repository()
+    Scan->>Scan: Discover files
+    Scan->>Scan: Detect frameworks
+    Scan->>Scan: Estimate complexity
+    Scan-->>Orch: RepositoryScanResult
+    
+    Note over Orch: Phase 2: Resolve
+    Orch->>Dep: resolve_dependencies()
+    Dep->>Dep: Build dependency graph
+    Dep->>Dep: Topological sort
+    Dep-->>Orch: DependencyGraph
+    
+    Note over Orch: Phase 3: Batch
+    Orch->>Dep: create_batches()
+    Dep->>Dep: Group by dependencies
+    Dep-->>Orch: MigrationBatch[]
+    
+    Note over Orch: Phase 4: Migrate
+    loop For each batch
+        Orch->>Mig: migrate_batch_async()
+        
+        par Parallel Migration
+            Mig->>LLM: generate_plan()
+            LLM-->>Mig: MigrationPlan
+            Mig->>LLM: transform_code()
+            LLM-->>Mig: Transformed code
+        and
+            Mig->>Mig: Apply AST transforms
+        end
+        
+        Mig-->>Orch: Updated FileInfo[]
+    end
+    
+    Note over Orch: Phase 5: Verify
+    Orch->>Ver: verify_batch()
+    Ver->>LLM: generate_tests()
+    LLM-->>Ver: Test suite
+    Ver->>Ver: Execute tests
+    Ver->>Ver: Compare outputs
+    Ver-->>Orch: Verification results
+    
+    Note over Orch: Generate Report
+    Orch->>Rep: generate_report()
+    Rep->>Rep: Calculate metrics
+    Rep->>Rep: Format output
+    Rep-->>CLI: MigrationReport
+    CLI-->>User: Display results
+```
+
+### 🏛️ Component Architecture
+
+```mermaid
+graph TB
+    subgraph "Phase 1: AST Engine & Analysis"
+        AST1[Python Parser<br/>libcst - 338 LOC]
+        AST2[Dependency Analyzer<br/>NetworkX - 250 LOC]
+        AST3[API Detector<br/>Pattern Matching - 200 LOC]
+        AST4[Plan Generator<br/>Strategy Creation - 300 LOC]
+    end
+    
+    subgraph "Phase 2: Migration Engine"
+        MIG1[Python Transformer<br/>AST Transforms - 220 LOC]
+        MIG2[Groq LLM Client<br/>API Integration - 150 LOC]
+        MIG3[Rate Limiter<br/>Tenacity - 80 LOC]
+        MIG4[Retry Logic<br/>Backoff Strategy - 60 LOC]
+    end
+    
+    subgraph "Phase 3: Verification Sandbox"
+        VER1[Test Generator<br/>LLM-Powered - 219 LOC]
+        VER2[Test Executor<br/>Docker/Local - 297 LOC]
+        VER3[Output Comparator<br/>Deep Diff - 307 LOC]
+        VER4[Docker Manager<br/>Container Ops - 268 LOC]
+    end
+    
+    subgraph "Phase 4: Agent Orchestration"
+        AGENT1[Repository Scanner<br/>File Discovery - 233 LOC]
+        AGENT2[Dependency Resolver<br/>Topological Sort - 130 LOC]
+        AGENT3[Migration Coordinator<br/>Async Parallel - 166 LOC]
+        AGENT4[Verification Agent<br/>Auto Testing - 173 LOC]
+        AGENT5[Report Generator<br/>Rich Output - 180 LOC]
+    end
+    
+    subgraph "Shared Infrastructure"
+        INFRA1[Pydantic Schemas<br/>Type Safety]
+        INFRA2[Config Manager<br/>Settings]
+        INFRA3[Logger<br/>Loguru]
+        INFRA4[Utils<br/>Helpers]
+    end
+    
+    AST1 --> INFRA1
+    AST2 --> INFRA1
+    MIG1 --> AST1
+    MIG2 --> INFRA2
+    VER2 --> VER4
+    AGENT1 --> AST1
+    AGENT2 --> AST2
+    AGENT3 --> MIG1
+    AGENT3 --> MIG2
+    AGENT4 --> VER1
+    AGENT4 --> VER2
+    
+    style AST1 fill:#DA7297,stroke:#333,stroke-width:2px,color:#fff
+    style AST2 fill:#DA7297,stroke:#333,stroke-width:2px,color:#fff
+    style AST3 fill:#DA7297,stroke:#333,stroke-width:2px,color:#fff
+    style AST4 fill:#DA7297,stroke:#333,stroke-width:2px,color:#fff
+    style MIG1 fill:#FADA7A,stroke:#333,stroke-width:2px,color:#333
+    style MIG2 fill:#FADA7A,stroke:#333,stroke-width:2px,color:#333
+    style MIG3 fill:#FADA7A,stroke:#333,stroke-width:2px,color:#333
+    style MIG4 fill:#FADA7A,stroke:#333,stroke-width:2px,color:#333
+    style VER1 fill:#82CD47,stroke:#333,stroke-width:2px,color:#fff
+    style VER2 fill:#82CD47,stroke:#333,stroke-width:2px,color:#fff
+    style VER3 fill:#82CD47,stroke:#333,stroke-width:2px,color:#fff
+    style VER4 fill:#82CD47,stroke:#333,stroke-width:2px,color:#fff
+    style AGENT1 fill:#667BC6,stroke:#333,stroke-width:2px,color:#fff
+    style AGENT2 fill:#667BC6,stroke:#333,stroke-width:2px,color:#fff
+    style AGENT3 fill:#667BC6,stroke:#333,stroke-width:2px,color:#fff
+    style AGENT4 fill:#667BC6,stroke:#333,stroke-width:2px,color:#fff
+    style AGENT5 fill:#667BC6,stroke:#333,stroke-width:2px,color:#fff
+```
+
+### 🔀 State Machine - File Migration States
+
+```mermaid
+stateDiagram-v2
+    [*] --> PENDING: File Discovered
+    
+    PENDING --> IN_PROGRESS: Start Migration
+    IN_PROGRESS --> COMPLETED: Transform Success
+    IN_PROGRESS --> FAILED: Transform Error
+    
+    COMPLETED --> VERIFIED: Verification Pass
+    COMPLETED --> VERIFICATION_FAILED: Verification Fail
+    
+    FAILED --> PENDING: Retry
+    VERIFICATION_FAILED --> COMPLETED: Skip Verification
+    
+    VERIFIED --> [*]: Success
+    FAILED --> [*]: Give Up
+    VERIFICATION_FAILED --> [*]: Partial Success
+    
+    note right of PENDING
+        Status: Not Started
+        Action: Queued
+    end note
+    
+    note right of IN_PROGRESS
+        Status: Migrating
+        Action: Transform Code
+    end note
+    
+    note right of COMPLETED
+        Status: Migrated
+        Action: Verify
+    end note
+    
+    note right of VERIFIED
+        Status: Complete
+        Score: 95-100%
+    end note
+```
+
+### 🗺️ Multi-Agent Coordination Flow
 
 ```mermaid
 graph TD
-    A[Repository Orchestrator<br/>Main Coordination & State Management] --> B[Repository Scanner]
-    A --> C[Dependency Resolver]
-    A --> D[Migration Coordinator]
+    START([Repository Path]) --> ORCH{Orchestrator<br/>Initialize}
     
-    B[Repository Scanner<br/>• Discover Files<br/>• Detect Framework<br/>• Complexity Analysis<br/>• Pattern Filtering]
+    ORCH --> |Step 1| SCAN[Repository Scanner<br/>Pattern Matching]
+    SCAN --> |FileInfo[]| CHECK1{Files Found?}
+    CHECK1 -->|No| END1([Exit: No Files])
+    CHECK1 -->|Yes| DEP[Dependency Resolver<br/>Build Graph]
     
-    C[Dependency Resolver<br/>• Topological Sort<br/>• Batch Creation<br/>• Circular Detection<br/>• Order Optimization]
+    DEP --> |DependencyGraph| TOPO[Topological Sort<br/>Order Files]
+    TOPO --> CHECK2{Circular Deps?}
+    CHECK2 -->|Yes| WARN[Log Warning<br/>Continue]
+    CHECK2 -->|No| BATCH
+    WARN --> BATCH[Create Batches<br/>Group Files]
     
-    D[Migration Coordinator<br/>• Parallel Execution<br/>• Async/Await<br/>• Rate Limiting<br/>• Error Handling]
+    BATCH --> |Batch[]| LOOP{For Each Batch}
+    LOOP --> |Process| MIG[Migration Coordinator<br/>Async Parallel]
     
-    B --> E[Verification Agent]
-    C --> E
-    D --> E
+    MIG --> PLAN[Generate Plan<br/>LLM + Rules]
+    PLAN --> TRANS[Transform Code<br/>AST + LLM]
+    TRANS --> SAVE[Save Migrated<br/>File]
     
-    B --> F[Report Generator]
-    C --> F
-    D --> F
-    E --> F
+    SAVE --> CHECK3{More Batches?}
+    CHECK3 -->|Yes| LOOP
+    CHECK3 -->|No| VERIFY{Verify Enabled?}
     
-    E[Verification Agent<br/>• Test Generation<br/>• Execute Tests<br/>• Compare Outputs<br/>• Score Similarity]
+    VERIFY -->|Yes| VER[Verification Agent<br/>Test Generation]
+    VERIFY -->|No| REP
+    VER --> EXEC[Execute Tests<br/>Compare Outputs]
+    EXEC --> REP[Report Generator<br/>Metrics & Tables]
     
-    F[Report Generator<br/>• Rich Console UI<br/>• JSON Export<br/>• Metrics & Stats<br/>• Error Summaries]
+    REP --> END2([Display Report<br/>Exit])
     
-    style A fill:#667BC6,stroke:#333,stroke-width:3px,color:#fff
-    style B fill:#DA7297,stroke:#333,stroke-width:2px,color:#fff
-    style C fill:#DA7297,stroke:#333,stroke-width:2px,color:#fff
-    style D fill:#DA7297,stroke:#333,stroke-width:2px,color:#fff
-    style E fill:#FADA7A,stroke:#333,stroke-width:2px,color:#333
-    style F fill:#82CD47,stroke:#333,stroke-width:2px,color:#fff
+    style START fill:#667BC6,stroke:#333,stroke-width:2px,color:#fff
+    style ORCH fill:#DA7297,stroke:#333,stroke-width:3px,color:#fff
+    style SCAN fill:#FADA7A,stroke:#333,stroke-width:2px,color:#333
+    style DEP fill:#FADA7A,stroke:#333,stroke-width:2px,color:#333
+    style MIG fill:#FADA7A,stroke:#333,stroke-width:2px,color:#333
+    style VER fill:#82CD47,stroke:#333,stroke-width:2px,color:#fff
+    style REP fill:#82CD47,stroke:#333,stroke-width:2px,color:#fff
+    style END2 fill:#667BC6,stroke:#333,stroke-width:2px,color:#fff
 ```
 
 ### Pipeline Phases
