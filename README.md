@@ -187,8 +187,8 @@ graph TD
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/code-morph.git
-cd code-morph
+git clone https://github.com/Huzaifanasir95/Code-Morph-Autonomous-Multi-Agent-Repository-Migration-Engine.git
+cd Code-Morph-Autonomous-Multi-Agent-Repository-Migration-Engine
 
 # Create virtual environment
 python -m venv venv
@@ -615,8 +615,8 @@ We welcome contributions! Here's how to get involved:
 
 ```bash
 # Fork the repository
-git clone https://github.com/yourusername/code-morph.git
-cd code-morph
+git clone https://github.com/Huzaifanasir95/Code-Morph-Autonomous-Multi-Agent-Repository-Migration-Engine.git
+cd Code-Morph-Autonomous-Multi-Agent-Repository-Migration-Engine
 
 # Create feature branch
 git checkout -b feature/amazing-feature
@@ -696,24 +696,25 @@ Special thanks to the open-source community for inspiration and support.
 
 ### Project Maintainer
 
-**Your Name**  
-📧 Email: your.email@example.com  
-💼 LinkedIn: [linkedin.com/in/yourprofile](https://linkedin.com/in/yourprofile)  
-🐙 GitHub: [@yourusername](https://github.com/yourusername)
+**Huzaifa Nasir**  
+📧 Email: nasirhuzaifa95@gmail.com  
+💼 LinkedIn: [linkedin.com/in/huzaifa-nasir-](https://www.linkedin.com/in/huzaifa-nasir-)  
+🐙 GitHub: [@Huzaifanasir95](https://github.com/Huzaifanasir95)  
+🌐 Website: [huzaifanasir.site](https://www.huzaifanasir.site/)
 
 ### Getting Help
 
 - 📖 **Documentation**: Check our [docs](docs/) folder
-- 💬 **Discussions**: Use [GitHub Discussions](https://github.com/yourusername/code-morph/discussions)
-- 🐛 **Bug Reports**: Open an [Issue](https://github.com/yourusername/code-morph/issues)
-- 💡 **Feature Requests**: Submit via [Issues](https://github.com/yourusername/code-morph/issues/new)
+- 💬 **Discussions**: Use [GitHub Discussions](https://github.com/Huzaifanasir95/Code-Morph-Autonomous-Multi-Agent-Repository-Migration-Engine/discussions)
+- 🐛 **Bug Reports**: Open an [Issue](https://github.com/Huzaifanasir95/Code-Morph-Autonomous-Multi-Agent-Repository-Migration-Engine/issues)
+- 💡 **Feature Requests**: Submit via [Issues](https://github.com/Huzaifanasir95/Code-Morph-Autonomous-Multi-Agent-Repository-Migration-Engine/issues/new)
 
 ### Project Links
 
-- **Repository**: [github.com/yourusername/code-morph](https://github.com/yourusername/code-morph)
+- **Repository**: [github.com/Huzaifanasir95/Code-Morph](https://github.com/Huzaifanasir95/Code-Morph-Autonomous-Multi-Agent-Repository-Migration-Engine)
+- **Website**: [huzaifanasir.site](https://www.huzaifanasir.site/)
 - **Documentation**: [code-morph.readthedocs.io](https://code-morph.readthedocs.io) *(Coming soon)*
 - **Demo Video**: [YouTube](https://youtube.com/watch?v=demo) *(Coming soon)*
-- **Blog Post**: [Medium article](https://medium.com/@yourusername/code-morph) *(Coming soon)*
 
 ---
 
@@ -721,7 +722,7 @@ Special thanks to the open-source community for inspiration and support.
 
 If you find Code-Morph useful for your projects, please consider giving it a star! ⭐
 
-[![Star History Chart](https://api.star-history.com/svg?repos=yourusername/code-morph&type=Date)](https://star-history.com/#yourusername/code-morph&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=Huzaifanasir95/Code-Morph-Autonomous-Multi-Agent-Repository-Migration-Engine&type=Date)](https://star-history.com/#Huzaifanasir95/Code-Morph-Autonomous-Multi-Agent-Repository-Migration-Engine&Date)
 
 ---
 
@@ -739,7 +740,6 @@ If Code-Morph has helped you save time or reduce migration costs:
 
 <div align="center">
 
-**Built with ❤️ by developers, for developers**
 
 *Transforming legacy code into modern masterpieces, one repository at a time.*
 
@@ -747,7 +747,7 @@ If Code-Morph has helped you save time or reduce migration costs:
 
 ---
 
-**© 2026 Code-Morph Project**  
+**© 2026 Huzaifa Nasir**  
 *MIT License • Made with Python & AI*
 
 </div>
