@@ -1,0 +1,19 @@
+# Migration rules for Python transformations
+
+deprecated_apis:
+  tensorflow_v1:
+    - pattern: "tf.Session"
+      replacement: "Use eager execution or tf.function"
+      severity: "high"
+    - pattern: "tf.placeholder"
+      replacement: "Use tf.Variable or function arguments"
+      severity: "high"
+    - pattern: "tf.global_variables_initializer"
+      replacement: "Variables are initialized automatically in TF2"
+      severity: "medium"
+
+code_patterns:
+  anti_patterns:
+    - pattern: "except:"
+      suggestion: "Use specific exception types"
+      severity: "low"
