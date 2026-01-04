@@ -991,26 +991,7 @@ git push origin feature/amazing-feature
 - 🌐 Internationalization
 - 📦 Package integrations
 
----
 
-## 📄 License
-
-This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
-
-```
-MIT License
-
-Copyright (c) 2026 Code-Morph Contributors
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-[Full MIT License text...]
-```
 
 ---
 
@@ -1064,17 +1045,7 @@ If you find Code-Morph useful for your projects, please consider giving it a sta
 
 ---
 
-## 💝 Support the Project
 
-If Code-Morph has helped you save time or reduce migration costs:
-
-- ⭐ Star the repository
-- 🐦 Share on Twitter/LinkedIn
-- 📝 Write a blog post about your experience
-- 💰 Consider sponsoring development (GitHub Sponsors)
-- 🤝 Contribute code, docs, or feedback
-
----
 
 <div align="center">
 
